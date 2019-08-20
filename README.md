@@ -9,7 +9,8 @@ Prerequisites
 
 Assumes you have a running OpenShift 4 cluster(i.e. RHPDS) and have:
 
-- https://github.com/mikefarah/yq[`yq`] (YAML processor)
+- [yq](https://github.com/mikefarah/yq) (YAML processor)
+- [jq](https://github.com/stedolan/jq) (JSON processor)
 - OpenShift 4 CLI `oc` for your environment from https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/.
 
 IMPORTANT
@@ -25,9 +26,9 @@ Login to OpenShift with `cluster-admin` privileges and run. If you want to run o
 
 [source, none]
 ```
-setup/preparelab-ccn.sh -c [COUNT] -m [MODUEL_TYPE]
+setup/preparelab_ccn.sh -c [COUNT] -m [MODUEL_TYPE]
 
-example: setup/preparelab-ccn.sh -c 50 -m m1,m2,m3,m4
+example: setup/preparelab_ccn.sh -c 50 -m m1,m2,m3,m4
 ```
 
 Delete an exsiting Lab Environment
@@ -37,5 +38,5 @@ Login to OpenShift with `cluster-admin` privileges and run. If you want to run o
 
 [source, none]
 ```
-setup/resetlab-ccn.sh
+setup/resetlab_ccn.sh
 ```
