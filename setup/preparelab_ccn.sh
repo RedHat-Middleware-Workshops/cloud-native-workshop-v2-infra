@@ -7,8 +7,6 @@ function usage() {
     echo "usage: $(basename $0) [-c/--count usercount] -m/--module-type module_type"
 }
 
-#exec > logfile.txt
-
 # Defaults
 USERCOUNT=10
 MODULE_TYPE=m1
@@ -90,13 +88,13 @@ echo -e "HOSTNAME_SUFFIX: $HOSTNAME_SUFFIX \n"
 oc project labs-infra
 
 # create templates for labs
-oc create -f $MYDIR/../files/template-binary.json -n openshift
-oc create -f $MYDIR/../files/template-prod.json -n openshift
-oc create -f $MYDIR/../files/ccn-sso72-template.json -n openshift
+oc create -f ${MYDIR}/../files/template-binary.json -n openshift
+oc create -f ${MYDIR}/../files/template-prod.json -n openshift
+oc create -f ${MYDIR}/../files/ccn-sso72-template.json -n openshift
 
 # deploy rhamt
 if [ -z "${MODULE_TYPE##*m1*}" ] ; then
-  oc process -f $MYDIR/../files/web-template-empty-dir-executor.json \
+  oc process -f ${MYDIR}/../files/web-template-empty-dir-executor.json \
       -p WEB_CONSOLE_REQUESTED_CPU=$REQUESTED_CPU \
       -p WEB_CONSOLE_REQUESTED_MEMORY=$REQUESTED_MEMORY \
       -p EXECUTOR_REQUESTED_CPU=$REQUESTED_CPU \
@@ -104,7 +102,7 @@ if [ -z "${MODULE_TYPE##*m1*}" ] ; then
 fi
 
 # deploy gogs
-oc -n labs-infra new-app -f $MYDIR/../files/gogs-template.yaml \
+oc -n labs-infra new-app -f ${MYDIR}/../files/gogs-template.yaml \
       -p HOSTNAME=gogs-labs-infra.$HOSTNAME_SUFFIX \
       -p GOGS_VERSION=0.11.34 \
       -p SKIP_TLS_VERIFY=true \
@@ -171,23 +169,30 @@ oc get project istio-operator
 RESULT=$? 
 if [ $RESULT -eq 0 ]; then
   echo -e "istio-operator already exists..."
-elif [ -z "${MODULE_TYPE##*m3*}" ] ; then
+elif [ -z "${MODULE_TYPE##*m3*}" ] || [ -z "${MODULE_TYPE##*m4*}" ] ; then
   echo -e "Installing istio-operator..."
   oc new-project istio-operator
-  oc apply -n istio-operator -f $MYDIR/../files/servicemesh-operator.yaml
+  oc apply -n istio-operator -f ${MYDIR}/../files/servicemesh-operator.yaml
 fi
 
 oc get project istio-system 
 RESULT=$? 
 if [ $RESULT -eq 0 ]; then
   echo -e "istio-system already exists..."
-elif [ -z "${MODULE_TYPE##*m3*}" ] ; then
+elif [ -z "${MODULE_TYPE##*m3*}" ] || [ -z "${MODULE_TYPE##*m4*}" ] ; then
   echo -e "Deploying the Istio Control Plane with Single-Tenant..."
   oc new-project istio-system
-  oc create -n istio-system -f $MYDIR/../files/servicemeshcontrolplane.yaml
+  oc create -n istio-system -f ${MYDIR}/../files/servicemeshcontrolplane.yaml
   # bash <(curl -L https://git.io/getLatestKialiOperator) --operator-image-version v1.0.0 --operator-watch-namespace '**' --accessible-namespaces '**' --operator-install-kiali false
   # oc apply -n istio-system -f https://raw.githubusercontent.com/kiali/kiali/v1.0.0/operator/deploy/kiali/kiali_cr.yaml
 fi
+
+# Knative Serving Operator
+# if [ -z "${MODULE_TYPE##*m4*}" ] ; then
+# kubectl apply --selector knative.dev/crd-install=true \
+#   --filename https://github.com/knative/serving/releases/download/v0.7.1/serving.yaml \
+#   --filename https://github.com/knative/eventing/releases/download/v0.7.1/release.yaml
+# fi
 
 # Create coolstore & bookinfo projects for each user
 echo -e "Creating coolstore & bookinfo projects for each user... \n"
@@ -211,6 +216,8 @@ for i in $(eval echo "{0..$USERCOUNT}") ; do
   fi
   if [ -z "${MODULE_TYPE##*m4*}" ] ; then
     oc new-project user$i-cloudnativeapps 
+    oc adm policy add-scc-to-user anyuid -z default -n user$i-cloudnativeapps 
+    oc adm policy add-scc-to-user privileged -z default -n user$i-cloudnativeapps 
     oc adm policy add-role-to-user admin user$i -n user$i-cloudnativeapps 
   fi
 done
@@ -233,7 +240,7 @@ done
 
 # update Jenkins templates and create Jenkins project
 if [ -z "${MODULE_TYPE##*m2*}" ] ; then
-  oc replace -f $MYDIR/../files/jenkins-ephemeral.yml -n openshift
+  oc replace -f ${MYDIR}/../files/jenkins-ephemeral.yml -n openshift
   oc get project jenkins
   RESULT=$? 
   if [ $RESULT -eq 0 ]; then
@@ -246,19 +253,17 @@ if [ -z "${MODULE_TYPE##*m2*}" ] ; then
   fi
 fi
 
-# Wait for rhamt to be running
-echo -e "Waiting for rhamt to be running... \n"
-while [ 1 ]; do
-  STAT=$(curl -s -w '%{http_code}' -o /dev/null http://rhamt-web-console-labs-infra.$HOSTNAME_SUFFIX)
-  if [ "$STAT" = 200 ] ; then
-    break
-  fi
-  echo -n .
-  sleep 10
-done
-
 # Configure RHAMT Keycloak
 if [ -z "${MODULE_TYPE##*m1*}" ] ; then
+  echo -e "Waiting for rhamt to be running... \n"
+  while [ 1 ]; do
+    STAT=$(curl -s -w '%{http_code}' -o /dev/null http://rhamt-web-console-labs-infra.$HOSTNAME_SUFFIX)
+    if [ "$STAT" = 200 ] ; then
+      break
+    fi
+    echo -n .
+    sleep 10
+  done
   echo -e "Getting access token to update RH-SSO theme \n"
   RESULT_TOKEN=$(curl -k -X POST https://secure-rhamt-web-console-labs-infra.$HOSTNAME_SUFFIX/auth/realms/master/protocol/openid-connect/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
@@ -433,7 +438,7 @@ while [ 1 ]; do
 done
 
 # workaround for PVC problem
-oc get --export cm/custom -n labs-infra -o yaml | yq w - 'data.CHE_INFRA_KUBERNETES_PVC_WAIT__BOUND' \"false\" | oc apply -f - -n labs-infra
+oc apply -f ${MYDIR}/../files/cm-custom-codeready.yaml
 oc scale -n labs-infra deployment/codeready --replicas=0
 oc scale -n labs-infra deployment/codeready --replicas=1
 
@@ -451,32 +456,56 @@ done
 # get keycloak admin password
 KEYCLOAK_USER="$(oc set env deployment/keycloak --list -n labs-infra|grep SSO_ADMIN_USERNAME | cut -d= -f2)"
 KEYCLOAK_PASSWORD="$(oc set env deployment/keycloak --list -n labs-infra|grep SSO_ADMIN_PASSWORD | cut -d= -f2)"
+
+# Wait for che to be back up
+echo "Waiting for keycloak to come up..."
+while [ 1 ]; do
+  STAT=$(curl -s -w '%{http_code}' -o /dev/null http://keycloak-labs-infra.$HOSTNAME_SUFFIX/auth/)
+  if [ "$STAT" = 200 ] ; then
+    break
+  fi
+  echo -n .
+  sleep 10
+done
+
 SSO_TOKEN=$(curl -s -d "username=${KEYCLOAK_USER}&password=${KEYCLOAK_PASSWORD}&grant_type=password&client_id=admin-cli" \
   -X POST http://keycloak-labs-infra.$HOSTNAME_SUFFIX/auth/realms/master/protocol/openid-connect/token | \
   jq  -r '.access_token')
 
 # Import realm 
-curl -v -H "Authorization: Bearer ${SSO_TOKEN}" -H "Content-Type:application/json" -d @${MYDIR}../files/ccnrd-realm.json \
+# curl -v -H "Authorization: Bearer ${SSO_TOKEN}" -H "Content-Type:application/json" -d @${MYDIR}/../files/ccnrd-realm.json \
+#   -X POST "http://keycloak-labs-infra.$HOSTNAME_SUFFIX/auth/admin/realms"
+wget https://raw.githubusercontent.com/RedHat-Middleware-Workshops/cloud-native-workshop-v2-infra/ocp-4.1/files/ccnrd-realm.json
+curl -v -H "Authorization: Bearer ${SSO_TOKEN}" -H "Content-Type:application/json" -d @ccnrd-realm.json \
   -X POST "http://keycloak-labs-infra.$HOSTNAME_SUFFIX/auth/admin/realms"
 
 ## MANUALLY add ProtocolMapper to map User Roles to "groups" prefix for JWT claims
 echo "Keycloak credentials: $KEYCLOAK_USER / $KEYCLOAK_PASSWORD"
-echo "URL: http://keycloak-labs-infra.${HOSTNAME_SUFFIX}"
 
 # import stack image
-oc create -n openshift -f $MYDIR/../files/stack.imagestream.yaml
-oc import-image --all quarkus-stack -n openshift
+# oc create -n openshift -f ${MYDIR}/../files/stack.imagestream.yaml
+# oc import-image --all quarkus-stack -n openshift
 
 # Import stack definition
 SSO_CHE_TOKEN=$(curl -s -d "username=admin&password=admin&grant_type=password&client_id=admin-cli" \
   -X POST http://keycloak-labs-infra.$HOSTNAME_SUFFIX/auth/realms/codeready/protocol/openid-connect/token | \
   jq  -r '.access_token')
 
+echo -e "SSO_CHE_TOKEN: $SSO_CHE_TOKEN"
+
+# STACK_RESULT=$(curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json' \
+#     --header "Authorization: Bearer ${SSO_CHE_TOKEN}" -d @stack-ccn.json \ 
+#     "http://codeready-labs-infra.$HOSTNAME_SUFFIX/api/stack")
+wget https://raw.githubusercontent.com/RedHat-Middleware-Workshops/cloud-native-workshop-v2-infra/ocp-4.1/files/stack-ccn.json
 STACK_RESULT=$(curl -X POST --header 'Content-Type: application/json' --header 'Accept: application/json' \
-    --header "Authorization: Bearer ${SSO_CHE_TOKEN}" -d @{MYDIR}../files/stack-ccn.json \
+    --header "Authorization: Bearer ${SSO_CHE_TOKEN}" -d @stack-ccn.json \
     "http://codeready-labs-infra.$HOSTNAME_SUFFIX/api/stack")
 
+echo -e "STACK_RESULT: $STACK_RESULT"
+
 STACK_ID=$(echo $STACK_RESULT | jq -r '.id')
+
+echo -e "STACK_ID: $STACK_ID"
 
 # Give all users access to the stack
 echo -e "Giving all users access to the stack...\n"

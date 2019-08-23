@@ -13,8 +13,9 @@ ENV GRAALVM_HOME="/usr/local/graalvm-ce-19.1.1"
 RUN ${GRAALVM_HOME}/bin/gu install native-image
 
 RUN wget -O /tmp/mvn.tar.gz http://www.eu.apache.org/dist/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.tar.gz
-
 RUN tar xzf /tmp/mvn.tar.gz && rm -rf /tmp/mvn.tar.gz && mkdir /usr/local/maven && mv apache-maven-3.6.0/ /usr/local/maven/ && alternatives --install /usr/bin/mvn mvn /usr/local/maven/apache-maven-3.6.0/bin/mvn 1
+
+RUN wget -O /tmp/tkn_0.2.2_Linux_x86_64.tar.gz https://github.com/tektoncd/cli/releases/download/v0.2.2/tkn_0.2.2_Linux_x86_64.tar.gz && cd /usr/local/bin && tar -xvzf /tmp/tkn_0.2.2_Linux_x86_64.tar.gz && rm -rf /tmp/tkn_0.2.2_Linux_x86_64.tar.gz
 
 ENV PATH="/usr/local/maven/apache-maven-3.6.0/bin:/usr/local/bin/:${PATH}"
 
